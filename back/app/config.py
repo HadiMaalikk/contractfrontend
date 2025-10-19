@@ -1,3 +1,5 @@
+# back/app/config.py
+
 from pydantic_settings import BaseSettings
 from pathlib import Path
 import os

@@ -1,3 +1,5 @@
+// front/src/components/ContractComparison.tsx
+
 import type { DragEvent, ChangeEvent } from 'react';
 import { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';

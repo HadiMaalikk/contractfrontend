@@ -1,7 +1,8 @@
-#report_generator.py
+# report_generator.py
 
 from jinja2 import Template
 from datetime import datetime
+import json
 
 def generate_html_report(comparison_result: dict, filename: str = "comparison_report.html") -> str:
     template_str = """
@@ -13,6 +14,10 @@ def generate_html_report(comparison_result: dict, filename: str = "comparison_re
             h1, h2 { color: #2c3e50; }
             pre { background: #f4f4f4; padding: 10px; border-left: 4px solid #ccc; }
             .section { margin-bottom: 30px; }
+            .diff-item { margin-bottom: 1em; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+            .added { background-color: #d4f8d4; }
+            .removed { background-color: #f8d4d4; }
+            .replaced { background-color: #f8f3d4; }
         </style>
     </head>
     <body>
@@ -20,18 +25,36 @@ def generate_html_report(comparison_result: dict, filename: str = "comparison_re
         <p><strong>Generated:</strong> {{ timestamp }}</p>
 
         <div class="section">
-            <h2>Text Differences (Semantic)</h2>
-            {% if diff_as_list %}
-                {% for item in diff %}
-                    <div style="margin-bottom: 1em;">
-                        <b>Doc 1:</b> {{ item.original_sentence }}<br>
-                        <b>Doc 2:</b> {{ item.matched_sentence }}<br>
-                        <b>Similarity Score:</b> {{ item.similarity_score }}<br>
-                        <b>Note:</b> {{ item.note }}<br>
+            <h2>Semantic Text Differences (AI-Enhanced)</h2>
+            {% if diff_semantic %}
+                {% for item in diff_semantic %}
+                    <div class="diff-item">
+                        <b>Original Sentence:</b> {{ item.original_content }}<br>
+                        <b>Matched Sentence:</b> {{ item.modified_content }}<br>
+                        <b>Similarity Score:</b> {{ item.confidence }}<br>
+                        <b>Importance:</b> {{ item.importance }}<br>
+                        {% if item.note %}<b>Note:</b> {{ item.note }}<br>{% endif %}
                     </div>
                 {% endfor %}
             {% else %}
-                <pre>{{ diff }}</pre>
+                <pre>No semantic differences found.</pre>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <h2>Word-Level Differences</h2>
+            {% if word_diff %}
+                {% for item in word_diff %}
+                    <div class="diff-item {{ item.type }}">
+                        {% if item.type == 'replaced' %}
+                            <b>Replaced:</b> "{{ item.old_text }}" → "{{ item.new_text }}"
+                        {% else %}
+                            <b>{{ item.type.capitalize() }}:</b> "{{ item.text }}"
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% else %}
+                <pre>No word-level differences found.</pre>
             {% endif %}
         </div>
 
@@ -39,7 +62,7 @@ def generate_html_report(comparison_result: dict, filename: str = "comparison_re
             <h2>Grammar Issues - Document 1</h2>
             <ul>
                 {% for issue in grammar1 %}
-                <li><strong>{{ issue.message }}</strong> — Suggestions: {{ issue.suggestions }}</li>
+                    <li><strong>{{ issue.message }}</strong> — Suggestions: {{ issue.suggestions }}</li>
                 {% endfor %}
             </ul>
         </div>
@@ -48,7 +71,7 @@ def generate_html_report(comparison_result: dict, filename: str = "comparison_re
             <h2>Grammar Issues - Document 2</h2>
             <ul>
                 {% for issue in grammar2 %}
-                <li><strong>{{ issue.message }}</strong> — Suggestions: {{ issue.suggestions }}</li>
+                    <li><strong>{{ issue.message }}</strong> — Suggestions: {{ issue.suggestions }}</li>
                 {% endfor %}
             </ul>
         </div>
@@ -59,25 +82,28 @@ def generate_html_report(comparison_result: dict, filename: str = "comparison_re
         </div>
 
         <div class="section">
-            <h2>Visual Similarity</h2>
-            <p>Similarity Score: <strong>{{ visual_score }}</strong></p>
+            <h2>Visual Comparison</h2>
+            <pre>{{ visual_comparison | tojson(indent=2) }}</pre>
+        </div>
+
+        <div class="section">
+            <h2>Date References Comparison</h2>
+            <pre>{{ date_comparison | tojson(indent=2) }}</pre>
         </div>
     </body>
     </html>
     """
 
-    text_diff = comparison_result.get("text_diff", "")
-    is_list = isinstance(text_diff, list)
-
     template = Template(template_str)
     html = template.render(
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        diff=text_diff,
-        diff_as_list=is_list,
+        diff_semantic=comparison_result.get("text_diff_semantic", []),
+        word_diff=comparison_result.get("text_diff_structured", []),
         grammar1=comparison_result.get("grammar_issues_doc1", []),
         grammar2=comparison_result.get("grammar_issues_doc2", []),
         formatting_diff=comparison_result.get("formatting_diff", {}),
-        visual_score=comparison_result.get("visual_comparison", {}).get("visual_similarity_score", "N/A")
+        visual_comparison=comparison_result.get("visual_comparison", {}),
+        date_comparison=comparison_result.get("date_comparison", {})
     )
 
     with open(filename, "w", encoding="utf-8") as f:

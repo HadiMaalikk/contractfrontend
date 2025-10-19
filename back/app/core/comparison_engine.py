@@ -2,9 +2,12 @@
 import difflib
 import language_tool_python
 import os
+
+
 from typing import List, Dict, Any, Union
 from date_comparison import compare_date_references  # Import the new date comparison module
 from app.core.semantic_model import get_semantic_model
+
 from formatting_engine import (
     extract_formatting_docx,
     extract_formatting_pdf,
@@ -31,6 +34,15 @@ try:
 except Exception as e:
     print(f"Warning: Could not load semantic model: {e}")
     model = None
+
+
+#newly created block : 19-10-2025
+from app.core.ai_analyzer import AIAnalyzer
+
+ai_analyzer = AIAnalyzer()
+
+#newly created block ends here
+
 
 
 def sentence_tokenize(text: str) -> List[str]:
@@ -178,7 +190,7 @@ def get_grammar_issues(text: str) -> List[Dict[str, Any]]:
 def compare_documents(text1: str, text2: str, file1_path: str, file2_path: str, yolo_model_path: str) -> Dict[str, Any]:
     """
     Main function to compare two documents with multiple analysis layers:
-    - semantic text difference
+    - semantic text difference (enhanced with AIAnalyzer)
     - grammar issues
     - formatting difference
     - visual element comparison (if PDF or images)
@@ -186,15 +198,40 @@ def compare_documents(text1: str, text2: str, file1_path: str, file2_path: str, 
 
     Returns a dictionary summarizing all comparison results.
     """
-    diff_output_semantic = get_text_diff_semantic(text1, text2)
+
+    # Semantic sentence-level differences
+    semantic_diffs_raw = get_text_diff_semantic(text1, text2)
+
+    # Enrich semantic differences with AIAnalyzer
+    if semantic_diffs_raw and isinstance(semantic_diffs_raw, list) and "note" not in semantic_diffs_raw[0]:
+        differences = []
+        for diff in semantic_diffs_raw:
+            differences.append({
+                "type": "modification",
+                "location": {"sentence": diff["original_sentence"]},
+                "original_content": diff["original_sentence"],
+                "modified_content": diff["matched_sentence"],
+                "confidence": diff.get("similarity_score")
+            })
+        # Enhance with AIAnalyzer importance scoring
+        enhanced_diffs = ai_analyzer.analyze_differences(differences)
+        diff_output_semantic = [d.dict() for d in enhanced_diffs]
+    else:
+        # Fallback if semantic model unavailable
+        diff_output_semantic = semantic_diffs_raw
+
+    # Word-level structured diff for frontend highlighting
     structured_word_diff = get_word_level_diff(text1, text2)
 
+    # Grammar checks
     grammar1 = get_grammar_issues(text1) if text1 else []
     grammar2 = get_grammar_issues(text2) if text2 else []
 
+    # File extensions
     ext1 = os.path.splitext(file1_path)[1].lower()
     ext2 = os.path.splitext(file2_path)[1].lower()
 
+    # Formatting extraction
     try:
         fmt1 = extract_formatting_docx(file1_path) if ext1 == ".docx" else extract_formatting_pdf(file1_path)
     except Exception as e:
@@ -207,12 +244,13 @@ def compare_documents(text1: str, text2: str, file1_path: str, file2_path: str, 
         print(f"Error extracting formatting from {file2_path}: {e}")
         fmt2 = []
 
-    formatting_diff = []
     try:
         formatting_diff = compare_formatting(fmt1, fmt2)
     except Exception as e:
         print(f"Error comparing formatting: {e}")
+        formatting_diff = []
 
+    # Visual comparison
     visual_result = {"notes": ["Visual comparison not applicable or skipped for the given file types."]}
     visual_comparison_types = [".pdf", ".png", ".jpg", ".jpeg"]
 
@@ -234,6 +272,7 @@ def compare_documents(text1: str, text2: str, file1_path: str, file2_path: str, 
             notes_list.append("Therefore, visual comparison was skipped.")
         visual_result = {"notes": notes_list}
 
+    # Date comparison
     try:
         date_comparison = compare_date_references(text1, text2)
     except Exception as e:
